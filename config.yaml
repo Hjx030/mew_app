@@ -1,0 +1,19 @@
+# MewCode 配置文件
+# protocol: "anthropic" | "openai"
+#   - anthropic: Anthropic Claude API
+#   - openai: OpenAI 及其兼容协议（DeepSeek, vLLM 等）
+protocol: openai
+
+# 模型名
+#   Claude: "claude-sonnet-5", "claude-opus-4-8"
+#   DeepSeek: "deepseek-chat", "deepseek-reasoner"
+model: deepseek-chat
+
+# API 请求地址
+#   DeepSeek: https://api.deepseek.com
+#   OpenAI: https://api.openai.com
+#   Anthropic: https://api.anthropic.com
+base_url: https://api.deepseek.com
+
+# API 密钥
+api_key: "sk-e677f15329d247319dfb99078461c83c"
