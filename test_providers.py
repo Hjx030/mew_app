@@ -419,10 +419,6 @@ class TestToolSystem:
         result = await reg.execute("broken")
         assert "错误" in result
 
-    def test_tool_needs_confirmation(self):
-        from mewcode.tools import Bash
-        assert Bash().needs_confirmation is True
-
     def test_read_file_tool(self):
         from mewcode.tools import ReadFile
         t = ReadFile()

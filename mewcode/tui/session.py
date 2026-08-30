@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 
 from prompt_toolkit import PromptSession
 
 from mewcode.config import Config
+from mewcode.policy import Rule, ask_user, create_policy
 from mewcode.providers import Message
 from mewcode.providers import create_provider
 from mewcode.prompt import (
@@ -30,10 +32,12 @@ from mewcode.tools import ToolCall, ToolRegistry
 from mewcode.tui.renderer import (
     render_cache_hit,
     render_error,
+    render_mode,
+    render_policy_blocked,
+    render_rules,
     render_step_counter,
     render_system,
     render_tool_call,
-    render_tool_confirm,
     render_tool_result,
     render_user_input,
     stream_text,
@@ -41,13 +45,6 @@ from mewcode.tui.renderer import (
 
 MAX_STEPS = 10
 GENTLE_REMINDER_THRESHOLD = 5
-
-
-async def _confirm_action(prompt_text: str) -> str:
-    """在终端中等待用户确认。"""
-    print(prompt_text, end="", flush=True)
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, sys.stdin.readline)
 
 
 def _attach_to_last_tool(request_msgs: list[Message], instruction: str) -> list[Message]:
@@ -78,6 +75,7 @@ async def run_session(
     plan_injector: PlanModeInjector | None = PlanModeInjector(
         PLAN_FULL_INSTRUCTION, PLAN_MINIMAL_REMINDER
     )
+    policy = create_policy()  # 安全检查层：加载用户+项目规则，默认档
     messages: list[Message] = []
     provider = create_provider(config)
     prompt_session = PromptSession(">>> ")
@@ -87,6 +85,7 @@ async def run_session(
         tools_count = len(tool_registry.get_schemas())
         render_system(f"已加载 {tools_count} 个工具")
     render_system(f"Plan Mode: {'开' if plan_mode else '关'}")
+    render_system(f"权限档位: {policy.mode}")
     render_system("输入 /help 查看命令，/exit 退出")
 
     current_task: asyncio.Task | None = None
@@ -119,6 +118,8 @@ async def run_session(
             render_system("  /clear          — 清空对话历史")
             render_system("  /tools          — 列出已加载的工具")
             render_system("  /plan on|off    — 开关 Plan Mode")
+            render_system("  /mode strict|default|permissive — 切换权限档位")
+            render_system("  /rules          — 查看当前规则与档位")
             render_system("  /help           — 显示此帮助")
             continue
         if text == "/clear":
@@ -147,6 +148,17 @@ async def run_session(
             else:
                 render_system(f"用法: /plan on 或 /plan off（当前: {'开' if plan_mode else '关'}）")
             continue
+        if text.startswith("/mode"):
+            parts = text.split()
+            if len(parts) == 2 and parts[1] in ("strict", "default", "permissive"):
+                policy.set_mode(parts[1])
+                render_mode(policy.mode)
+            else:
+                render_system(f"用法: /mode strict|default|permissive（当前: {policy.mode}）")
+            continue
+        if text == "/rules":
+            render_rules(policy.get_rules_summary())
+            continue
         if text.startswith("/"):
             render_error(f"未知命令：{text}")
             continue
@@ -163,7 +175,7 @@ async def run_session(
 
         try:
             current_task = asyncio.create_task(
-                _run_agent_loop(provider, messages, config, tool_registry, stable_prompt)
+                _run_agent_loop(provider, messages, config, tool_registry, stable_prompt, policy)
             )
             await current_task
             current_task = None
@@ -178,6 +190,7 @@ async def _run_agent_loop(
     config: Config,
     tool_registry: ToolRegistry | None,
     stable_prompt: str,
+    policy,
 ) -> None:
     """执行一轮 Agent Loop：模型可连续调用工具直到给出文字回复。
 
@@ -187,9 +200,9 @@ async def _run_agent_loop(
         config: 供应商配置
         tool_registry: 工具注册器
         stable_prompt: 稳定全局指令（可缓存前缀）
+        policy: 安全检查层（PolicyEngine）
     """
     tools = tool_registry.get_schemas() if tool_registry else None
-    confirmed_tools: set[str] = set()
     tool_call_count = 0
     gentle_sent = False
 
@@ -234,21 +247,37 @@ async def _run_agent_loop(
         if pending_tool_call:
             render_tool_call(pending_tool_call.name, pending_tool_call.arguments)
 
-            # 确认检查
-            tool_def = tool_registry.get(pending_tool_call.name) if tool_registry else None
-            if tool_def and tool_def.needs_confirmation and pending_tool_call.name not in confirmed_tools:
-                render_tool_confirm(pending_tool_call.name, pending_tool_call.arguments)
-                confirm = await _confirm_action("确认? [Enter/n] ")
-                if confirm.strip().lower() in ("n", "no", "q", "quit"):
-                    render_system("已取消工具调用")
-                    messages.append(_make_assistant_tool_call_msg(pending_tool_call))
-                    messages.append(
-                        Message("tool", "用户取消了该工具调用", tool_call_id=pending_tool_call.id)
-                    )
+            # 安全检查层裁决（工具执行前唯一入口，F8）
+            decision = policy.decide(pending_tool_call.name, pending_tool_call.arguments)
+
+            def _block(reason: str) -> None:
+                render_policy_blocked(reason)
+                messages.append(_make_assistant_tool_call_msg(pending_tool_call))
+                messages.append(
+                    Message("tool", f"策略拦截: {reason}", tool_call_id=pending_tool_call.id)
+                )
+
+            if decision.verdict == "deny":
+                _block(decision.reason)
+                if step < MAX_STEPS - 1:
+                    render_step_counter(step + 2, MAX_STEPS)
+                continue
+
+            if decision.verdict == "ask":
+                choice = await ask_user(pending_tool_call.name, pending_tool_call.arguments, policy.mode)
+                if choice == "deny":
+                    _block("用户拒绝")
                     if step < MAX_STEPS - 1:
                         render_step_counter(step + 2, MAX_STEPS)
                     continue
-                confirmed_tools.add(pending_tool_call.name)
+                if choice == "allow-session":
+                    rule = _rule_from_call(pending_tool_call, "session")
+                    policy.add_session_rule(rule)
+                    render_system(f"已添加会话规则: {rule.tool} allow {rule.pattern}")
+                elif choice == "allow-forever":
+                    rule = _rule_from_call(pending_tool_call, "project")
+                    policy.save_project_rule(rule)
+                    render_system(f"已写入项目规则: {rule.tool} allow {rule.pattern}")
 
             # 执行工具
             result = await tool_registry.execute(pending_tool_call.name, **pending_tool_call.arguments)
@@ -298,3 +327,15 @@ def _make_assistant_tool_call_msg(tc: ToolCall) -> Message:
             }
         ],
     )
+
+
+def _rule_from_call(tc: ToolCall, source: str) -> Rule:
+    """根据一次工具调用生成 allow 规则（HITL 本会话/永久允许用）。
+
+    bash 用原始命令转正则精确匹配；文件工具用具体路径（glob）精确匹配。
+    """
+    if tc.name == "bash":
+        command = tc.arguments.get("command", "")
+        return Rule("bash", "allow", re.escape(command), source)
+    path_arg = tc.arguments.get("path") or tc.arguments.get("base_dir") or "."
+    return Rule(tc.name, "allow", path_arg, source)

@@ -94,3 +94,26 @@ def render_cache_hit(hit: int, miss: int) -> None:
     console.print(
         f"[{color}]缓存命中 {hit} tokens / 未命中 {miss} tokens（命中率 {rate:.0f}%）[/{color}]"
     )
+
+
+def render_policy_blocked(reason: str) -> None:
+    """显示策略拦截（红色）。"""
+    console.print(f"[red]✖ 策略拦截: {reason}[/red]")
+
+
+def render_policy_ask(tool_name: str, args: dict, mode: str) -> None:
+    """显示 HITL 询问菜单（黄色）。"""
+    args_str = ", ".join(f"{k}={v!r}" for k, v in args.items())
+    console.print(f"[yellow]⚠ 策略询问: 工具 [bold]{tool_name}[/bold]({args_str})[/yellow]")
+    console.print(f"[yellow]  当前档位: {mode}[/yellow]")
+    console.print("[yellow]  [a]本次允许 [s]本会话允许 [p]永久允许 [n]拒绝（回车默认本次允许）[/yellow]")
+
+
+def render_mode(mode: str) -> None:
+    """显示当前权限档位（青色）。"""
+    console.print(f"[cyan]ℹ 权限档位: {mode}[/cyan]")
+
+
+def render_rules(text: str) -> None:
+    """显示规则汇总。"""
+    console.print(f"[cyan]── 当前规则 ──\n{text}[/cyan]")

@@ -21,7 +21,6 @@ class Tool:
     name: str = ""
     description: str = ""
     parameters: dict = field(default_factory=dict)
-    needs_confirmation: bool = False
 
     async def run(self, **kwargs) -> str:
         raise NotImplementedError

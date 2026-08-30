@@ -10,7 +10,6 @@ from mewcode.tools.base import Tool
 class Bash(Tool):
     name = "bash"
     description = "执行一条 shell 命令并返回输出。命令在本地系统上直接执行，有破坏性风险，执行前需用户确认。文件读写请优先使用 read_file/write_file/edit_file 专用工具。"
-    needs_confirmation = True
     parameters = {
         "type": "object",
         "properties": {
