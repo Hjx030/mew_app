@@ -5,7 +5,7 @@ from mewcode.tools.base import Tool
 
 class WriteFile(Tool):
     name = "write_file"
-    description = "将内容写入指定文件（覆盖已存在的文件）"
+    description = "将内容写入指定文件（覆盖已存在的文件）。执行前必须先调用 read_file 了解目标文件现状。请用本工具而非 shell 重定向。"
     parameters = {
         "type": "object",
         "properties": {

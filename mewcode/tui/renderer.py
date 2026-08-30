@@ -81,3 +81,16 @@ def render_tool_confirm(name: str, arguments: dict) -> None:
 def render_step_counter(current: int, total: int = 10) -> None:
     """显示 Agent Loop 当前执行步数。"""
     console.print(f"[cyan]─── 步骤 {current}/{total} ───[/cyan]")
+
+
+def render_cache_hit(hit: int, miss: int) -> None:
+    """显示缓存命中统计（命中率高显示绿色，否则黄色）。"""
+    total = hit + miss
+    if total <= 0:
+        console.print("[dim]缓存统计：无数据[/dim]")
+        return
+    rate = hit / total * 100
+    color = "green" if rate > 50 else "yellow"
+    console.print(
+        f"[{color}]缓存命中 {hit} tokens / 未命中 {miss} tokens（命中率 {rate:.0f}%）[/{color}]"
+    )

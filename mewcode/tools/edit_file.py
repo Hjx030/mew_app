@@ -5,7 +5,7 @@ from mewcode.tools.base import Tool
 
 class EditFile(Tool):
     name = "edit_file"
-    description = "替换文件指定行范围的内容（行号从 1 开始）。用新内容替换从 start_line 到 end_line 的行。"
+    description = "替换文件指定行范围的内容（行号从 1 开始）。用新内容替换从 start_line 到 end_line 的行。执行前必须先调用 read_file 了解目标文件现状。请用本工具而非 sed。"
     parameters = {
         "type": "object",
         "properties": {

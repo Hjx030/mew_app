@@ -5,7 +5,7 @@ from mewcode.tools.base import Tool
 
 class ReadFile(Tool):
     name = "read_file"
-    description = "读取指定文件的内容并返回"
+    description = "读取指定文件的内容并返回。文件操作请使用本工具而非 shell 命令（cat/head）。"
     parameters = {
         "type": "object",
         "properties": {

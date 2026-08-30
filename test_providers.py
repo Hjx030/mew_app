@@ -100,6 +100,37 @@ class TestOpenAIProvider:
         assert len(text_events) == 1
         assert text_events[0].content == "hello"
 
+    @pytest.mark.asyncio
+    async def test_usage_event(self):
+        """验证含 usage 的最终块（choices 为空）被解析为 usage 事件。"""
+        import json
+
+        config = Config("openai", "deepseek-chat", "https://api.deepseek.com", "sk-test")
+        provider = create_provider(config)
+
+        lines = [
+            make_sse_data({"choices": [{"delta": {"content": "hi"}, "finish_reason": "stop"}]}),
+            make_sse_data({
+                "choices": [],
+                "usage": {
+                    "prompt_tokens": 100,
+                    "prompt_cache_hit_tokens": 90,
+                    "prompt_cache_miss_tokens": 10,
+                    "completion_tokens": 5,
+                },
+            }),
+            "data: [DONE]",
+        ]
+
+        with patch.object(httpx.AsyncClient, "stream", return_value=make_mock_stream(200, lines)):
+            events = [e async for e in provider.stream_chat([Message("user", "hi")], config)]
+
+        usage_events = [e for e in events if e.type == "usage"]
+        assert len(usage_events) == 1, f"期望 1 个 usage 事件，实际 {len(usage_events)}"
+        usage = json.loads(usage_events[0].content)
+        assert usage["prompt_cache_hit_tokens"] == 90
+        assert usage["prompt_cache_miss_tokens"] == 10
+
 
 class TestAnthropicProvider:
     @pytest.mark.asyncio

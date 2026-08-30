@@ -50,6 +50,7 @@ class OpenAIProvider(BaseProvider):
             "model": config.model,
             "messages": _serialize_messages(messages),
             "stream": True,
+            "stream_options": {"include_usage": True},  # DeepSeek 流式默认不返回 usage，需显式开启
         }
         if tools:
             body["tools"] = tools
@@ -82,6 +83,11 @@ class OpenAIProvider(BaseProvider):
                             data = json.loads(payload)
                         except json.JSONDecodeError:
                             continue
+
+                        # 处理 usage：DeepSeek 在 [DONE] 前返回含 usage 的最终块（choices 为空数组）
+                        usage = data.get("usage")
+                        if usage:
+                            yield StreamEvent("usage", json.dumps(usage, ensure_ascii=False))
 
                         choices = data.get("choices", [])
                         if not choices:
