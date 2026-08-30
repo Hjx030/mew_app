@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 
 from mewcode.policy.rules import RuleStore, load_project_rules, load_user_rules
-from mewcode.policy.sandbox import check_bash, check_file_tool
+from mewcode.policy.sandbox import check_bash, check_file_tool, check_remote_args
 
 READ_ONLY_TOOLS = ("read_file", "glob", "grep")
 
@@ -95,6 +95,10 @@ class PolicyEngine:
         elif tool_name == "bash":
             command = arguments.get("command", "")
             reason = check_bash(command, self.allowed_root)
+            if reason:
+                return Decision("deny", "沙箱: " + reason)
+        elif tool_name.startswith("mcp_"):
+            reason = check_remote_args(arguments, self.allowed_root)
             if reason:
                 return Decision("deny", "沙箱: " + reason)
 

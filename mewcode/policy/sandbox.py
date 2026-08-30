@@ -70,3 +70,26 @@ def check_bash(command: str, root: str) -> str | None:
         if not is_within(real, root):
             return f"命令中的路径越界: {clean} → {real} 不在允许根 {root} 内"
     return None
+
+
+_PATH_KEY_HINTS = ("path", "dir", "file", "folder", "directory")
+
+
+def check_remote_args(args: dict, root: str) -> str | None:
+    """远端 MCP 工具参数的最佳努力沙箱。
+
+    扫描参数中 key 含 path/dir/file 等提示、或值像绝对路径的字段，解析后越界返回原因。
+    """
+    for key, value in args.items():
+        if not isinstance(value, str) or not value:
+            continue
+        is_path_key = any(h in key.lower() for h in _PATH_KEY_HINTS)
+        if not is_path_key and not _is_absolute_path(value):
+            continue
+        try:
+            real = resolve_real(value)
+        except Exception:
+            continue
+        if not is_within(real, root):
+            return f"参数 {key} 的路径越界: {value} → {real} 不在允许根 {root} 内"
+    return None

@@ -133,6 +133,19 @@ class TestRuleMatch:
         assert not r.match("read_file", {"path": "/x"})
 
 
+class TestRemoteToolSandbox:
+    def test_remote_tool_path_violation_denied(self):
+        p = make_engine()
+        d = p.decide("mcp_fs_write_file", {"path": "C:\\Windows\\win.ini" if os.name == "nt" else "/etc/passwd"})
+        assert d.verdict == "deny"
+        assert "越界" in d.reason
+
+    def test_remote_tool_path_within_allowed(self):
+        p = make_engine(mode="permissive")
+        d = p.decide("mcp_fs_read_file", {"path": "config.yaml"})
+        assert d.verdict == "allow"
+
+
 class TestRulePersistence:
     def test_save_and_load(self):
         with tempfile.TemporaryDirectory() as tmp:

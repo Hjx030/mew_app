@@ -60,7 +60,9 @@ def main() -> None:
 
     # 运行交互式会话
     try:
-        asyncio.run(run_session(config, tool_registry=tool_registry))
+        asyncio.run(
+            run_session(config, tool_registry=tool_registry, mcp_config_path=args.mcp_config)
+        )
     except KeyboardInterrupt:
         pass
     except Exception as e:

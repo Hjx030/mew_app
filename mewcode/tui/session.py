@@ -14,6 +14,7 @@ import sys
 from prompt_toolkit import PromptSession
 
 from mewcode.config import Config
+from mewcode.mcp import ConnectionPool, discover
 from mewcode.policy import Rule, ask_user, create_policy
 from mewcode.providers import Message
 from mewcode.providers import create_provider
@@ -63,12 +64,14 @@ def _attach_to_last_tool(request_msgs: list[Message], instruction: str) -> list[
 async def run_session(
     config: Config,
     tool_registry: ToolRegistry | None = None,
+    mcp_config_path: str | None = None,
 ) -> None:
     """启动交互式对话会话。
 
     Args:
         config: 供应商配置
         tool_registry: 工具注册器（可选）
+        mcp_config_path: MCP server 配置文件路径（可选）
     """
     plan_mode = True
     stable_prompt = PromptBuilder(SECTIONS).build_stable()
@@ -79,6 +82,20 @@ async def run_session(
     messages: list[Message] = []
     provider = create_provider(config)
     prompt_session = PromptSession(">>> ")
+
+    # MCP 启动发现：连接配置的 server，注册远端工具
+    mcp_pool = ConnectionPool()
+    if tool_registry:
+        try:
+            mcp_tools, mcp_errors = await discover(mcp_config_path, pool=mcp_pool)
+            for t in mcp_tools:
+                tool_registry.register(t)
+            if mcp_tools:
+                render_system(f"已加载 {len(mcp_tools)} 个 MCP 远端工具")
+            for err in mcp_errors:
+                render_system(err)
+        except Exception as e:
+            render_system(f"MCP 加载失败: {e}")
 
     render_system(f"MewCode v0.3.0 — {config.protocol} / {config.model}")
     if tool_registry:
@@ -111,6 +128,7 @@ async def run_session(
 
         # ---- 内置命令 ----
         if text in ("/exit", "/quit"):
+            await mcp_pool.close_all()
             break
         if text == "/help":
             render_system("可用命令：")
@@ -120,7 +138,20 @@ async def run_session(
             render_system("  /plan on|off    — 开关 Plan Mode")
             render_system("  /mode strict|default|permissive — 切换权限档位")
             render_system("  /rules          — 查看当前规则与档位")
+            render_system("  /mcp            — 查看 MCP 工具与 server 状态")
             render_system("  /help           — 显示此帮助")
+            continue
+        if text == "/mcp":
+            lines = ["已加载 MCP 工具:"]
+            if tool_registry:
+                mcp_names = sorted(n for n in tool_registry._tools if n.startswith("mcp_"))
+                if mcp_names:
+                    lines.extend(f"  {n}" for n in mcp_names)
+                else:
+                    lines.append("  （无）")
+            servers = sorted(mcp_pool.servers())
+            lines.append(f"已连接 server: {', '.join(servers) if servers else '（无）'}")
+            render_rules("\n".join(lines))
             continue
         if text == "/clear":
             messages = []

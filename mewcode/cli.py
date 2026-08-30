@@ -25,6 +25,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="配置文件路径（默认 ~/.config/mewcode/config.yaml）",
     )
     parser.add_argument(
+        "--mcp-config",
+        type=str,
+        default=None,
+        help="MCP server 配置文件路径（默认 ~/.config/mewcode/mcp_servers.yaml）",
+    )
+    parser.add_argument(
         "-v", "--version",
         action="store_true",
         help="显示版本号",
